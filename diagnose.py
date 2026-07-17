@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Diagnóstico completo do Google Calendar API"""
-import json, urllib.request, urllib.parse, os, sys
+import json, urllib.request, urllib.parse, os
 
-CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_DIR = os.path.expanduser("~/google-calendar-sync")
 CREDS_PATH = os.path.join(CONFIG_DIR, "credentials.json")
 TOKEN_PATH = os.path.join(CONFIG_DIR, "token.json")
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -23,37 +23,40 @@ resp = urllib.request.urlopen(req)
 tokens = json.loads(resp.read())
 access_token = tokens["access_token"]
 
-print(f"✅ Access Token obtido: {access_token[:20]}...")
+print(f"✅ Access Token: {access_token[:25]}...")
 
-# 2) Testar endpoint com erro detalhado
-def api_detailed(url):
-    r = urllib.request.Request(url)
+# 2) Testar tokeninfo
+print("\n🔍 TOKEN INFO:")
+try:
+    ti = urllib.request.urlopen(f"https://oauth2.googleapis.com/tokeninfo?access_token={access_token}")
+    info = json.loads(ti.read())
+    print(f"   email: {info.get('email', 'N/A')}")
+    print(f"   scope: {info.get('scope', 'N/A')}")
+    print(f"   expires_in: {info.get('expires_in', 'N/A')}s")
+except urllib.error.HTTPError as e:
+    print(f"   Erro {e.code}: {e.read().decode()}")
+
+# 3) Testar calendarList
+print("\n🔍 CALENDAR LIST:")
+try:
+    r = urllib.request.Request("https://www.googleapis.com/calendar/v3/users/me/calendarList")
     r.add_header("Authorization", f"Bearer {access_token}")
-    try:
-        resp = urllib.request.urlopen(r)
-        return json.loads(resp.read()), 200
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        try:
-            err = json.loads(body)
-        except:
-            err = {"raw": body}
-        return err, e.code
+    cals = json.loads(urllib.request.urlopen(r).read())
+    for c in cals.get("items", []):
+        print(f"   📌 {c.get('summary')} ({c.get('id')})")
+except urllib.error.HTTPError as e:
+    err = json.loads(e.read().decode())
+    print(f"   Erro {e.code}:")
+    print(f"   {json.dumps(err, indent=4)}")
 
-# 3) Testar tokeninfo
-print("\n🔍 Testando tokeninfo...")
-info, code = api_detailed("https://oauth2.googleapis.com/tokeninfo?access_token=" + access_token)
-print(f"   Status: {code}")
-print(f"   Detalhes: {json.dumps(info, indent=2)}")
-
-# 4) Testar calendar list
-print("\n🔍 Testando calendarList...")
-result, code = api_detailed("https://www.googleapis.com/calendar/v3/users/me/calendarList")
-print(f"   Status: {code}")
-print(f"   Resposta: {json.dumps(result, indent=2)}")
-
-# 5) Testar com primary
-print("\n🔍 Testando calendar primary...")
-result2, code2 = api_detailed("https://www.googleapis.com/calendar/v3/calendars/primary")
-print(f"   Status: {code2}")
-print(f"   Resposta: {json.dumps(result2, indent=2)}")
+# 4) Testar primary
+print("\n🔍 CALENDAR PRIMARY:")
+try:
+    r2 = urllib.request.Request("https://www.googleapis.com/calendar/v3/calendars/primary")
+    r2.add_header("Authorization", f"Bearer {access_token}")
+    cal = json.loads(urllib.request.urlopen(r2).read())
+    print(f"   ✅ {cal.get('summary')} - {cal.get('id')}")
+except urllib.error.HTTPError as e:
+    err = json.loads(e.read().decode())
+    print(f"   Erro {e.code}:")
+    print(f"   {json.dumps(err, indent=4)}")
